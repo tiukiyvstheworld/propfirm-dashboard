@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#020817"/>
+<title>Prop Firm Dashboard v1.0</title>
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;PropFirm Dashboard&quot;,&quot;short_name&quot;:&quot;PropFirm&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#020817&quot;,&quot;theme_color&quot;:&quot;#020817&quot;}"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#020817;color:#e2e8f0;font-family:'DM Sans',sans-serif;min-height:100vh}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0f172a}::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+  input[type=range]{-webkit-appearance:none;height:4px;background:transparent;width:100%}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#60a5fa;cursor:pointer;border:2px solid #0f172a}
+  select,textarea,input[type=text]{background:#0f172a;color:#e2e8f0;border:1px solid #1e293b;border-radius:6px;padding:8px 12px;font-family:inherit;font-size:14px;outline:none;width:100%}
+  select:focus,textarea:focus,input[type=text]:focus{border-color:#60a5fa}
+  textarea{resize:vertical;min-height:60px}
+  .pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-family:'Space Mono',monospace;font-weight:700;letter-spacing:1px}
+  .card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px}
+  .btn{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 18px;color:#94a3b8;font-family:inherit;font-size:13px;cursor:pointer;transition:all 0.2s}
+  .btn:hover{background:#334155;color:#e2e8f0}
+  .btn-primary{background:#1d4ed8;border-color:#2563eb;color:#fff}
+  .btn-primary:hover{background:#2563eb}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .grid-auto{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  @media(max-width:600px){
+    .grid-2{grid-template-columns:1fr}
+    .grid-3{grid-template-columns:1fr 1fr}
+    .grid-auto{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState, useEffect} = React;
+
+const PHASES = [
+  {id:1,label:"Phase 1",title:"Stabiliser le cadre",duration:"Jours 1–7",objective:"Zéro improvisation. Tu trades propre, pas beaucoup.",color:"#4ade80",
+   rules:["1 à 2 setups maximum","1–3 trades/jour plafonné","Stop journée : -1R ou -2R","Après 2 pertes d'affilée : pause 30–60 min","Checklist d'entrée : 3–5 conditions claires","SL/TP posés à l'avance — aucun élargissement","1 capture avant + 1 après chaque trade"],
+   criteria:["5 jours de trading, respect règles ≥ 80%","Aucune violation majeure (revenge trade, dépassement daily loss…)"]},
+  {id:2,label:"Phase 2",title:"Construire la constance",duration:"Semaine 2–3",objective:"Qualité régulière, drawdown contrôlé, pas d'overtrading.",color:"#60a5fa",
+   rules:["Si discipline < 7/10 → stop trading immédiat","Un seul plan A par session (pas de plan B en live)","Optimiser 1 seule variable à la fois","Créer liste A+ setups vs B setups (éviter en challenge)","Review hebdo 30–45 min (top 3 / bottom 3 trades)"],
+   criteria:["10–15 trades loggés","Violations ≤ 1","Courbe stable et contrôlée"]},
+  {id:3,label:"Phase 3",title:"Mode Challenge",duration:"Semaine 4–6",objective:"Valider en protégeant le downside. Ton job = ne pas perdre le compte.",color:"#f59e0b",
+   rules:["Réduire risque si nécessaire (0,25% → 0,15%)","En drawdown : A+ setups uniquement","No trade day planifié si conditions mauvaises","Cible réaliste : +0,5R à +1,5R/semaine","Si semaine positive : ne pas sur-trader","Script anti-tilt à relire avant chaque session","Score énergie < 6/10 → pas de trading"],
+   criteria:["Profit en progression sans pic émotionnel","Capacité d'arrêter une session après une perte"]},
+  {id:4,label:"Phase 4",title:"Consolidation",duration:"Après validation",objective:"Garder le compte et reproduire.",color:"#c084fc",
+   rules:["Continuer le plafond de trades","Continuer les stops journaliers","Interdire les trades d'ennui","Geler la stratégie (pas de nouveautés)","Affiner uniquement via review hebdo","Revue mensuelle : winrate, average R, violations"],
+   criteria:["Revue mensuelle régulière","Stabilité des statistiques"]},
+];
+
+const ANTI_TILT = [
+  "Je n'ai rien à prouver aujourd'hui.",
+  "Une bonne journée = respect du plan, pas profit.",
+  "Le marché sera là demain.",
+  "Mon edge vient de la répétition, pas de l'intensité.",
+  "Perdre un trade n'est pas une erreur — dévier du plan, oui.",
+];
+
+const DEF_SCORES = {discipline:5,execution:5,risk:5,psychology:5,energy:5};
+const DEF_WEEK = {focus:"",objDiscipline:"",objStrategic:"",objHabits:"",riskPerTrade:"10 USD",maxTrades:"3",stopDay:"-1R ou -2R",noTradeConditions:"",preSession:"État mental, news, niveaux clés (5–10 min)",postSession:"Journal + 1 amélioration (10 min)",reviewDay:"Dimanche"};
+
+function load(key, def) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+}
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
+
+function CheckItem({icon, q, seuil}) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div onClick={() => setChecked(c=>!c)} style={{display:"flex",gap:12,alignItems:"center",padding:"10px 12px",borderRadius:8,marginBottom:6,background:checked?"#052e1620":"#020817",border:`1px solid ${checked?"#166534":"#1e293b"}`,cursor:"pointer",transition:"all 0.2s"}}>
+      <div style={{width:20,height:20,borderRadius:4,border:`2px solid ${checked?"#4ade80":"#334155"}`,background:checked?"#4ade80":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+        {checked && <span style={{color:"#020817",fontSize:12,fontWeight:700}}>✓</span>}
+      </div>
+      <span style={{fontSize:16}}>{icon}</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:14,color:checked?"#4ade80":"#cbd5e1"}}>{q}</div>
+        <div style={{fontSize:11,color:"#475569",marginTop:1}}>{seuil}</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("overview");
+  const [phase, setPhase] = useState(() => load("pf_phase", 1));
+  const [scores, setScores] = useState(() => load("pf_scores", DEF_SCORES));
+  const [trades, setTrades] = useState(() => load("pf_trades", []));
+  const [newTrade, setNewTrade] = useState({pair:"USDJPY",result:"",rr:"",note:""});
+  const [weekPlan, setWeekPlan] = useState(() => load("pf_week", DEF_WEEK));
+  const [scriptIdx, setScriptIdx] = useState(0);
+  const [violations, setViolations] = useState(() => load("pf_violations", 0));
+
+  useEffect(() => save("pf_phase", phase), [phase]);
+  useEffect(() => save("pf_scores", scores), [scores]);
+  useEffect(() => save("pf_trades", trades), [trades]);
+  useEffect(() => save("pf_week", weekPlan), [weekPlan]);
+  useEffect(() => save("pf_violations", violations), [violations]);
+
+  const avgScore = ((scores.discipline+scores.execution+scores.risk+scores.psychology)/4).toFixed(1);
+  const ok = scores.discipline >= 7 && scores.energy >= 6;
+  const totalTrades = trades.length;
+  const winners = trades.filter(t=>parseFloat(t.rr)>0).length;
+  const winrate = totalTrades > 0 ? Math.round(winners/totalTrades*100) : 0;
+  const totalR = trades.reduce((s,t)=>s+(parseFloat(t.rr)||0), 0);
+
+  const Slider = ({label, k, emoji}) => (
+    <div style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,alignItems:"center"}}>
+        <span style={{fontSize:13,color:"#94a3b8",fontFamily:"'Space Mono',monospace"}}>{emoji} {label}</span>
+        <span style={{fontSize:22,fontWeight:700,color:scores[k]>=7?"#4ade80":scores[k]>=5?"#f59e0b":"#ef4444",fontFamily:"'Space Mono',monospace"}}>
+          {scores[k]}<span style={{fontSize:12,color:"#475569"}}>/10</span>
+        </span>
+      </div>
+      <div style={{position:"relative",height:8,background:"#1e293b",borderRadius:4}}>
+        <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${scores[k]*10}%`,background:scores[k]>=7?"#4ade80":scores[k]>=5?"#f59e0b":"#ef4444",borderRadius:4,transition:"width 0.3s"}}/>
+      </div>
+      <input type="range" min={0} max={10} value={scores[k]} onChange={e=>setScores(s=>({...s,[k]:+e.target.value}))} style={{margin:"6px 0 0",accentColor:"#60a5fa"}}/>
+    </div>
+  );
+
+  const tabs = [
+    {id:"overview",label:"⚡ Vue Globale"},
+    {id:"phases",label:"🗺 Phases"},
+    {id:"scorecard",label:"📊 Scorecard"},
+    {id:"journal",label:"📓 Journal"},
+    {id:"weekly",label:"📅 Planning"},
+    {id:"mental",label:"🧠 Mental"},
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#020817",fontFamily:"'DM Sans',sans-serif",color:"#e2e8f0"}}>
+
+      {/* HEADER */}
+      <div style={{background:"#0a0f1e",borderBottom:"1px solid #1e293b",padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontFamily:"'Space Mono',monospace",fontSize:10,color:"#475569",letterSpacing:3,marginBottom:2}}>PROP FIRM CHALLENGE</div>
+          <div style={{fontSize:20,fontWeight:700}}>
+            <span style={{color:"#60a5fa"}}>TRADING</span>
+            <span style={{color:"#475569"}}>·</span>
+            <span>PLAN v1.0</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+          {[["CAPITAL","$6,000","#4ade80"],["TARGET","+10%","#f59e0b"],["PHASE","P"+phase,PHASES[phase-1].color]].map(([l,v,c])=>(
+            <div key={l} style={{textAlign:"center"}}>
+              <div style={{fontSize:9,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>{l}</div>
+              <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'Space Mono',monospace"}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* NAV */}
+      <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:"1px solid #0f172a",scrollbarWidth:"none"}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} className="btn" style={{whiteSpace:"nowrap",background:tab===t.id?"#1e3a5f":"#0f172a",color:tab===t.id?"#60a5fa":"#64748b",borderColor:tab===t.id?"#2563eb":"#1e293b",fontSize:12,fontWeight:tab===t.id?600:400}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
+
+        {/* ── OVERVIEW ── */}
+        {tab==="overview" && (
+          <div>
+            <div style={{background:ok?"linear-gradient(135deg,#052e16,#0f172a)":"linear-gradient(135deg,#450a0a,#0f172a)",border:`1px solid ${ok?"#166534":"#991b1b"}`,borderRadius:12,padding:20,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+              <div style={{fontSize:40}}>{ok?"🟢":"🔴"}</div>
+              <div>
+                <div style={{fontSize:18,fontWeight:700,color:ok?"#4ade80":"#f87171"}}>{ok?"TRADING AUTORISÉ":"TRADING BLOQUÉ"}</div>
+                <div style={{fontSize:13,color:"#64748b",marginTop:2}}>
+                  {!ok && scores.discipline<7 && "Discipline < 7/10 → Stop. "}
+                  {!ok && scores.energy<6 && "Énergie < 6/10 → No trade day."}
+                  {ok && "Toutes les conditions sont remplies. Respecte le plan."}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid-auto" style={{marginBottom:16}}>
+              {[["Objectif Profit","$600","+10%","#4ade80"],["Perte Max Jour","$240","−4%","#ef4444"],["Drawdown Max","$600","−10%","#f59e0b"],["Risque / Trade","$10","fixe","#60a5fa"],["R:R Minimum","1:1.5","requis","#c084fc"],["Jours Min","3 J","de trading","#94a3b8"]].map(([l,v,s,c])=>(
+                <div key={l} className="card" style={{textAlign:"center",padding:14}}>
+                  <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:4}}>{l.toUpperCase()}</div>
+                  <div style={{fontSize:22,fontWeight:700,color:c,fontFamily:"'Space Mono',monospace"}}>{v}</div>
+                  <div style={{fontSize:11,color:"#475569",marginTop:2}}>{s}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+              <div className="card">
+                <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>PAIRES AUTORISÉES</div>
+                {["USDJPY","AUDUSD","GBPJPY"].map(p=>(
+                  <div key={p} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa"}}/>
+                    <span style={{fontFamily:"'Space Mono',monospace",fontSize:15,fontWeight:700}}>{p}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>SESSION / SETUP</div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:10,color:"#475569"}}>HORAIRE</div>
+                  <div style={{fontFamily:"'Space Mono',monospace",fontSize:16,fontWeight:700,color:"#f59e0b",marginTop:2}}>🕕 06:00 (EAT)</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"#475569"}}>TIMEFRAMES</div>
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    {["M1","M5"].map(tf=><span key={tf} className="pill" style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #1d4ed8"}}>{tf}</span>)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" style={{borderColor:"#7f1d1d"}}>
+              <div style={{fontSize:10,color:"#ef4444",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>🚫 CONDITIONS NO TRADE</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8}}>
+                {["Fatigue / énergie < 6","Range sans direction","Spread élevé","Actualité majeure","2 pertes consécutives","Discipline < 7/10","Pas de setup A+"].map(c=>(
+                  <div key={c} style={{display:"flex",gap:6,alignItems:"center",fontSize:13,color:"#94a3b8"}}>
+                    <span style={{color:"#ef4444"}}>✕</span>{c}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── PHASES ── */}
+        {tab==="phases" && (
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+              {PHASES.map(p=>(
+                <button key={p.id} onClick={()=>setPhase(p.id)} className="btn" style={{borderColor:phase===p.id?p.color:"#1e293b",color:phase===p.id?p.color:"#64748b",background:phase===p.id?p.color+"15":"#0f172a",fontWeight:phase===p.id?700:400}}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {PHASES.map(ph=>(
+              <div key={ph.id} style={{display:phase===ph.id?"block":"none"}}>
+                <div className="card" style={{borderColor:ph.color+"40",marginBottom:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                    <div>
+                      <span className="pill" style={{background:ph.color+"20",color:ph.color,border:`1px solid ${ph.color}50`,marginRight:8}}>{ph.duration}</span>
+                      <span style={{fontSize:18,fontWeight:700}}>{ph.title}</span>
+                    </div>
+                  </div>
+                  <div style={{fontSize:14,color:"#94a3b8",fontStyle:"italic",marginBottom:14,paddingLeft:12,borderLeft:`3px solid ${ph.color}`}}>{ph.objective}</div>
+                  <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:10}}>RÈGLES</div>
+                  {ph.rules.map((r,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:14,color:"#cbd5e1",marginBottom:8}}>
+                      <span style={{color:ph.color,fontSize:16,lineHeight:"1.2",flexShrink:0}}>→</span>{r}
+                    </div>
+                  ))}
+                </div>
+                <div className="card" style={{borderColor:"#166534"}}>
+                  <div style={{fontSize:10,color:"#4ade80",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:10}}>✓ CRITÈRES DE PASSAGE</div>
+                  {ph.criteria.map((c,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:14,color:"#cbd5e1",marginBottom:6}}>
+                      <span style={{color:"#4ade80"}}>☐</span>{c}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── SCORECARD ── */}
+        {tab==="scorecard" && (
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+              <div>
+                <div className="card" style={{marginBottom:16}}>
+                  <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:16}}>SCORES DU JOUR</div>
+                  <Slider label="Discipline" k="discipline" emoji="🎯"/>
+                  <Slider label="Exécution setup" k="execution" emoji="⚡"/>
+                  <Slider label="Gestion risque" k="risk" emoji="🛡"/>
+                  <Slider label="Psychologie" k="psychology" emoji="🧠"/>
+                  <Slider label="Énergie" k="energy" emoji="💪"/>
+                </div>
+              </div>
+              <div>
+                <div className="card" style={{marginBottom:12,textAlign:"center",borderColor:parseFloat(avgScore)>=7?"#166534":"#7f1d1d"}}>
+                  <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:8}}>SCORE MOYEN</div>
+                  <div style={{fontSize:60,fontWeight:700,fontFamily:"'Space Mono',monospace",color:parseFloat(avgScore)>=7?"#4ade80":parseFloat(avgScore)>=5?"#f59e0b":"#ef4444",lineHeight:1}}>{avgScore}</div>
+                  <div style={{fontSize:13,color:"#475569",marginTop:4}}>/ 10</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[
+                    {l:"RÈGLE DISCIPLINE",ok2:scores.discipline>=7,okTxt:"✓ OK",nokTxt:"✗ STOP",sub:"Seuil : ≥ 7/10"},
+                    {l:"RÈGLE ÉNERGIE",ok2:scores.energy>=6,okTxt:"✓ OK",nokTxt:"✗ NO TRADE",sub:"Seuil : ≥ 6/10"},
+                  ].map(x=>(
+                    <div key={x.l} className="card" style={{padding:12,borderColor:x.ok2?"#166534":"#7f1d1d"}}>
+                      <div style={{fontSize:12,display:"flex",justifyContent:"space-between"}}>
+                        <span style={{color:"#64748b"}}>{x.l}</span>
+                        <span style={{color:x.ok2?"#4ade80":"#ef4444",fontWeight:700}}>{x.ok2?x.okTxt:x.nokTxt}</span>
+                      </div>
+                      <div style={{fontSize:11,color:"#475569",marginTop:2}}>{x.sub}</div>
+                    </div>
+                  ))}
+                  <div className="card" style={{padding:12}}>
+                    <div style={{fontSize:12,display:"flex",justifyContent:"space-between"}}>
+                      <span style={{color:"#64748b"}}>VIOLATIONS</span>
+                      <span style={{color:violations===0?"#4ade80":violations===1?"#f59e0b":"#ef4444",fontWeight:700}}>{violations}</span>
+                    </div>
+                    <div style={{display:"flex",gap:6,marginTop:8}}>
+                      <button className="btn" style={{fontSize:12,padding:"4px 16px"}} onClick={()=>setViolations(v=>Math.max(0,v-1))}>−</button>
+                      <button className="btn" style={{fontSize:12,padding:"4px 16px"}} onClick={()=>setViolations(v=>v+1)}>+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="card" style={{marginTop:16}}>
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>KPI DE LA SEMAINE</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                {[
+                  {l:"Règles respectées",t:"≥ 80–90%",v:"—"},
+                  {l:"Violations",t:"0–1",v:violations<=1?"✓ "+violations:"✗ "+violations,ok:violations<=1},
+                  {l:"Score discipline",t:"≥ 7/10",v:scores.discipline>=7?"✓ "+scores.discipline:"✗ "+scores.discipline,ok:scores.discipline>=7},
+                  {l:"PnL (info only)",t:"non prioritaire",v:`${totalR>=0?"+":""}${totalR.toFixed(1)}R`},
+                ].map(k=>(
+                  <div key={k.l} style={{background:"#020817",borderRadius:8,padding:12,border:"1px solid #1e293b"}}>
+                    <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{k.l}</div>
+                    <div style={{fontSize:12,color:"#94a3b8"}}>Cible : <span style={{color:"#e2e8f0"}}>{k.t}</span></div>
+                    <div style={{fontSize:16,fontWeight:700,marginTop:4,color:k.ok===undefined?"#60a5fa":k.ok?"#4ade80":"#ef4444"}}>{k.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── JOURNAL ── */}
+        {tab==="journal" && (
+          <div>
+            <div className="card" style={{marginBottom:16}}>
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:14}}>LOGGER UN TRADE</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+                <div>
+                  <div style={{fontSize:10,color:"#475569",marginBottom:4}}>PAIRE</div>
+                  <select value={newTrade.pair} onChange={e=>setNewTrade(t=>({...t,pair:e.target.value}))}>
+                    <option>USDJPY</option><option>AUDUSD</option><option>GBPJPY</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"#475569",marginBottom:4}}>RÉSULTAT $</div>
+                  <input type="text" placeholder="+10 ou -10" value={newTrade.result} onChange={e=>setNewTrade(t=>({...t,result:e.target.value}))}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"#475569",marginBottom:4}}>R:R RÉALISÉ</div>
+                  <input type="text" placeholder="1.5 ou -1" value={newTrade.rr} onChange={e=>setNewTrade(t=>({...t,rr:e.target.value}))}/>
+                </div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10,color:"#475569",marginBottom:4}}>NOTE / OBSERVATION</div>
+                <input type="text" placeholder="Setup, erreur, observation..." value={newTrade.note} onChange={e=>setNewTrade(t=>({...t,note:e.target.value}))}/>
+              </div>
+              <button className="btn btn-primary" style={{width:"100%"}} onClick={()=>{
+                if(!newTrade.rr) return;
+                const t={...newTrade,id:Date.now(),date:new Date().toLocaleDateString("fr-FR")};
+                setTrades(ts=>[...ts,t]);
+                setNewTrade({pair:"USDJPY",result:"",rr:"",note:""});
+              }}>+ Ajouter le trade</button>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+              {[["TRADES",totalTrades,"#60a5fa"],["WINRATE",winrate+"%",winrate>=50?"#4ade80":"#ef4444"],["TOTAL R",(totalR>=0?"+":"")+totalR.toFixed(1)+"R",totalR>=0?"#4ade80":"#ef4444"],["P&L $",(totalR*10>=0?"+":"")+"$"+(totalR*10).toFixed(0),totalR>=0?"#4ade80":"#ef4444"]].map(([l,v,c])=>(
+                <div key={l} className="card" style={{textAlign:"center",padding:12}}>
+                  <div style={{fontSize:9,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:22,fontWeight:700,fontFamily:"'Space Mono',monospace",color:c}}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="card">
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>HISTORIQUE</div>
+              {trades.length===0
+                ? <div style={{textAlign:"center",color:"#334155",padding:"32px 0",fontSize:14}}>Aucun trade loggé</div>
+                : [...trades].reverse().map(t=>(
+                  <div key={t.id} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 12px",borderRadius:8,marginBottom:6,background:parseFloat(t.rr)>=0?"#052e1620":"#450a0a20",border:`1px solid ${parseFloat(t.rr)>=0?"#166534":"#991b1b"}30`,flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"'Space Mono',monospace",fontSize:13,fontWeight:700,color:"#60a5fa",width:60}}>{t.pair}</span>
+                    <span style={{color:parseFloat(t.rr)>=0?"#4ade80":"#ef4444",fontFamily:"'Space Mono',monospace",fontWeight:700,width:55}}>{parseFloat(t.rr)>=0?"+":""}{t.rr}R</span>
+                    <span style={{color:"#94a3b8",fontSize:12}}>{t.date}</span>
+                    <span style={{color:"#64748b",fontSize:12,flex:1}}>{t.note}</span>
+                    <button onClick={()=>setTrades(ts=>ts.filter(x=>x.id!==t.id))} style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:18}}>×</button>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+        )}
+
+        {/* ── WEEKLY ── */}
+        {tab==="weekly" && (
+          <div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:14}}>TEMPLATE PLANNING HEBDO</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {[["Focus de la semaine","focus"],["Objectif discipline","objDiscipline"],["Objectif stratégie","objStrategic"],["Objectif habitudes","objHabits"]].map(([l,k])=>(
+                  <div key={k}>
+                    <div style={{fontSize:10,color:"#475569",letterSpacing:1,marginBottom:6,fontFamily:"'Space Mono',monospace"}}>{l.toUpperCase()}</div>
+                    <textarea value={weekPlan[k]} onChange={e=>setWeekPlan(w=>({...w,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:14}}>RÈGLES NON NÉGOCIABLES</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {[["Risque par trade","riskPerTrade"],["Max trades/jour","maxTrades"],["Stop journée","stopDay"],["Conditions NO TRADE","noTradeConditions"]].map(([l,k])=>(
+                  <div key={k}>
+                    <div style={{fontSize:10,color:"#475569",letterSpacing:1,marginBottom:6,fontFamily:"'Space Mono',monospace"}}>{l.toUpperCase()}</div>
+                    <input type="text" value={weekPlan[k]} onChange={e=>setWeekPlan(w=>({...w,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="card">
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:14}}>ROUTINES</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                {[["Pré-session","preSession"],["Post-session","postSession"],["Review hebdo","reviewDay"]].map(([l,k])=>(
+                  <div key={k}>
+                    <div style={{fontSize:10,color:"#475569",letterSpacing:1,marginBottom:6,fontFamily:"'Space Mono',monospace"}}>{l.toUpperCase()}</div>
+                    <textarea value={weekPlan[k]} onChange={e=>setWeekPlan(w=>({...w,[k]:e.target.value}))} style={{minHeight:80}}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MENTAL ── */}
+        {tab==="mental" && (
+          <div>
+            <div className="card" style={{marginBottom:16,borderColor:"#7c3aed",background:"linear-gradient(135deg,#1e0a3c,#0f172a)"}}>
+              <div style={{fontSize:10,color:"#c084fc",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:10}}>🧘 SCRIPT ANTI-TILT</div>
+              <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>À relire AVANT chaque session (Phase 3)</div>
+              <div style={{fontSize:20,fontWeight:600,color:"#e2e8f0",lineHeight:1.5,marginBottom:20,fontStyle:"italic",minHeight:60}}>
+                "{ANTI_TILT[scriptIdx]}"
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {ANTI_TILT.map((_,i)=>(
+                  <button key={i} onClick={()=>setScriptIdx(i)} className="btn" style={{fontSize:11,padding:"4px 12px",borderColor:scriptIdx===i?"#7c3aed":"#1e293b",color:scriptIdx===i?"#c084fc":"#64748b"}}>#{i+1}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:"#475569",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>✅ CHECKLIST PRÉ-SESSION</div>
+              {[
+                {icon:"😴",q:"Ai-je bien dormi ?",seuil:"Énergie ≥ 6/10"},
+                {icon:"📰",q:"Ai-je vérifié les news/agenda ?",seuil:"Calendrier économique"},
+                {icon:"📊",q:"Ai-je identifié mes niveaux clés ?",seuil:"Support/Résistance clairs"},
+                {icon:"🎯",q:"Mon plan A est défini ?",seuil:"1 seul plan A"},
+                {icon:"🛡",q:"Mon stop journée est fixé ?",seuil:"−1R ou −2R max"},
+                {icon:"🧠",q:"Mon état mental est stable ?",seuil:"Discipline ≥ 7/10"},
+              ].map((item,i)=><CheckItem key={i} {...item}/>)}
+            </div>
+
+            <div className="card" style={{borderColor:"#7f1d1d"}}>
+              <div style={{fontSize:10,color:"#ef4444",letterSpacing:2,fontFamily:"'Space Mono',monospace",marginBottom:12}}>⚠️ RÈGLES "SI A → ALORS STOP"</div>
+              {[
+                ["Discipline < 7/10","Stop trading, sortie immédiate"],
+                ["Énergie < 6/10","No trade day"],
+                ["2 pertes consécutives","Pause 30–60 min minimum"],
+                ["Daily loss = −$240","Fin de session, compte protégé"],
+                ["Revenge trade détecté","Fermer plateforme"],
+                ["Drawdown > −$300","Réduire risque à 0,15%"],
+              ].map(([c,a],i)=>(
+                <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <span style={{color:"#f59e0b",fontSize:13,flexShrink:0,fontFamily:"'Space Mono',monospace"}}>SI</span>
+                  <span style={{color:"#e2e8f0",fontSize:13,flex:1,minWidth:120}}>{c}</span>
+                  <span style={{color:"#ef4444",fontSize:13,flex:1,minWidth:120}}>→ {a}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
